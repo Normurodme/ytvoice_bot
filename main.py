@@ -13,22 +13,22 @@ from telegram.ext import (
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 YOUTUBE_REGEX = re.compile(r"(https?://)?(www\.)?(youtube\.com|youtu\.be)/.+")
+
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
+
 # ================= AUDIO YUKLASH =================
 async def download_audio(url, chat_id, context):
-    output = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
+    output = os.path.join(DOWNLOAD_DIR, "audio.%(ext)s")
 
     cmd = [
         "yt-dlp",
         "-f", "bestaudio[ext=m4a]/bestaudio",
-        "--extract-audio",
-        "--audio-format", "mp3",
         "--no-playlist",
         "--geo-bypass",
         "--no-check-certificate",
-        "--socket-timeout", "10",
+        "--socket-timeout", "15",
         "-o", output,
         url
     ]
@@ -37,9 +37,9 @@ async def download_audio(url, chat_id, context):
         process = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL
+            stderr=asyncio.subprocess.PIPE
         )
-        await process.communicate()
+        _, err = await process.communicate()
 
         files = os.listdir(DOWNLOAD_DIR)
         if not files:
@@ -55,19 +55,22 @@ async def download_audio(url, chat_id, context):
 
         os.remove(path)
 
-    except:
+    except Exception as e:
         await context.bot.send_message(
             chat_id=chat_id,
-            text="❌ Audio yuklashda xatolik bo‘ldi."
+            text="❌ Audio yuklab bo‘lmadi.\n"
+                 "👉 Video juda uzun, yopiq yoki cheklangan bo‘lishi mumkin."
         )
+
 
 # ================= START =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "👋 Salom!\n\n"
-        "Men YouTube videoni audio formatga aylantirib beraman 🎧\n\n"
+        "Men sizga YouTube videoni audio formatga aylantirib beraman 🎧\n\n"
         "YouTube link yuboring."
     )
+
 
 # ================= MESSAGE =================
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -86,6 +89,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         download_audio(text, update.message.chat_id, context)
     )
 
+
 # ================= RUN =================
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
@@ -95,6 +99,7 @@ def main():
 
     print("🤖 YT Audio bot ishga tushdi...")
     app.run_polling()
+
 
 if __name__ == "__main__":
     main()
