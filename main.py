@@ -86,14 +86,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Bu YouTube link emas.")
         return
 
-    await update.message.reply_text("🎵 Link qabul qilindi\n⏳ Audio tayyorlanyapti...")
+    await update.message.reply_text(
+        "🎵 Link qabul qilindi\n"
+        "⏳ Audio tayyorlanyapti...\n\n"
+        "ℹ️ Uzun videolar biroz ko‘proq vaqt oladi."
+    )
 
     output = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
 
+    # 🔴 ASOSIY O‘ZGARISH SHU YERDA
     cmd = [
         "yt-dlp",
-        "-f", "ba/b",           # ⭐ SHORTS + UZUN VIDEO ISHLAYDI
+        "-f", "bestaudio",
         "--no-playlist",
+        "-x",
+        "--audio-format", "mp3",
+        "--audio-quality", "128K",
         "-o", output,
         text
     ]
@@ -119,8 +127,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         os.remove(path)
 
-    except Exception as e:
-        await update.message.reply_text("❌ Xatolik yuz berdi. Boshqa video urinib ko‘ring.")
+    except Exception:
+        await update.message.reply_text(
+            "❌ Xatolik yuz berdi.\n"
+            "Boshqa video yoki qisqaroq video bilan urinib ko‘ring."
+        )
 
 
 # ========= RUN =========
