@@ -11,7 +11,6 @@ from telegram.ext import (
     filters,
 )
 
-# ================== SOZLAMALAR ==================
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 REQUIRED_CHANNEL = "@aiyordamchi"
 
@@ -21,7 +20,7 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 YOUTUBE_REGEX = re.compile(r"(https?://)?(www\.)?(youtube\.com|youtu\.be)/.+")
 INSTAGRAM_REGEX = re.compile(r"(https?://)?(www\.)?(instagram\.com|instagr\.am)/.+")
 
-# ================== A'ZOLIK ==================
+# ========= A'ZOLIK =========
 async def check_subscription(user_id, context):
     try:
         member = await context.bot.get_chat_member(REQUIRED_CHANNEL, user_id)
@@ -40,7 +39,7 @@ async def send_subscribe_message(update: Update):
         reply_markup=keyboard
     )
 
-# ================== START ==================
+# ========= START =========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_subscription(update.message.from_user.id, context):
         await send_subscribe_message(update)
@@ -48,11 +47,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         "👋 Salom!\n\n"
-        "Men sizga **Instagram va YouTube** videolarini audio formatga aylantirib beraman 🎧\n\n"
-        "🔗 Link yuborishingiz mumkin."
+        "Men sizga <b>Instagram</b> va <b>YouTube</b> videolarini audio formatga aylantirib beraman 🎧\n\n"
+        "🔗 Link yuborishingiz mumkin.",
+        parse_mode="HTML"
     )
 
-# ================== CALLBACK ==================
+# ========= CALLBACK =========
 async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -62,7 +62,7 @@ async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await query.answer("❌ Kanalga a’zo emassiz!", show_alert=True)
 
-# ================== ASOSIY HANDLER ==================
+# ========= MESSAGE =========
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_subscription(update.message.from_user.id, context):
         await send_subscribe_message(update)
@@ -70,14 +70,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     url = update.message.text.strip()
 
-    # ---------- YouTube ----------
+    # ===== YouTube (SEN BERGAN KOD – 1 GA 1) =====
     if YOUTUBE_REGEX.match(url):
         await update.message.reply_text(
-            "🎵 YouTube link qabul qilindi\n"
+            "🎵 Link qabul qilindi\n"
             "⚡ Audio tez tayyorlanmoqda..."
         )
 
         output = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
+
         cmd = [
             "yt-dlp",
             "-f", "bestaudio[ext=m4a]/bestaudio",
@@ -88,14 +89,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             url
         ]
 
-    # ---------- Instagram ----------
+    # ===== Instagram =====
     elif INSTAGRAM_REGEX.match(url):
         await update.message.reply_text(
-            "🎵 Instagram link qabul qilindi\n"
+            "🎵 Link qabul qilindi\n"
             "⚡ Audio tayyorlanmoqda..."
         )
 
         output = os.path.join(DOWNLOAD_DIR, "%(id)s.%(ext)s")
+
         cmd = [
             "yt-dlp",
             "-f", "bestaudio/best",
@@ -111,7 +113,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Bu Instagram yoki YouTube link emas.")
         return
 
-    # ---------- Download ----------
+    # ===== DOWNLOAD =====
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -139,13 +141,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "👉 Video yopiq, juda uzun yoki muammoli bo‘lishi mumkin."
         )
 
-# ================== RUN ==================
+# ========= RUN =========
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(callbacks))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    print("🤖 Instagram + YouTube Audio Bot ishga tushdi...")
     app.run_polling()
 
 if __name__ == "__main__":
