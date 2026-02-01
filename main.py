@@ -1,30 +1,32 @@
 import os
 import re
 import asyncio
-from telegram import Update
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup
+)
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     MessageHandler,
+    CallbackQueryHandler,
     ContextTypes,
     filters,
 )
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
-# 🔒 MAJBURIY KANAL
 REQUIRED_CHANNEL = "@aiyordamchi"
 
-YOUTUBE_REGEX = re.compile(
-    r"(https?://)?(www\.)?(youtube\.com|youtu\.be)/.+"
-)
+YOUTUBE_REGEX = re.compile(r"(https?://)?(www\.)?(youtube\.com|youtu\.be)/.+")
 
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 
 # ========= A'ZOLIK TEKSHIRISH =========
-async def check_subscription(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
+async def check_subscription(user_id, context):
     try:
         member = await context.bot.get_chat_member(REQUIRED_CHANNEL, user_id)
         return member.status in ["member", "administrator", "creator"]
@@ -32,17 +34,24 @@ async def check_subscription(user_id: int, context: ContextTypes.DEFAULT_TYPE) -
         return False
 
 
+# ========= A'ZOLIK XABARI =========
+async def send_subscribe_message(update: Update):
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🤖 AIyordamchi", url="https://t.me/aiyordamchi")],
+        [InlineKeyboardButton("✅ Tasdiqlash", callback_data="check_sub")]
+    ])
+
+    await update.message.reply_text(
+        "❌ Botdan foydalanish uchun kanalga a’zo bo‘lishingiz kerak.\n\n"
+        "👉 Kanalga a’zo bo‘ling va **Tasdiqlash** tugmasini bosing.",
+        reply_markup=keyboard
+    )
+
+
 # ========= START =========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-
-    is_subscribed = await check_subscription(user_id, context)
-    if not is_subscribed:
-        await update.message.reply_text(
-            "❌ Botdan foydalanish uchun kanalga a’zo bo‘lishingiz kerak.\n\n"
-            "👉 https://t.me/aiyordamchi\n\n"
-            "A’zo bo‘lgach, /start ni qayta bosing."
-        )
+    if not await check_subscription(update.message.from_user.id, context):
+        await send_subscribe_message(update)
         return
 
     await update.message.reply_text(
@@ -52,76 +61,70 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+# ========= CALLBACK =========
+async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "check_sub":
+        if await check_subscription(query.from_user.id, context):
+            await query.message.edit_text(
+                "✅ A’zolik tasdiqlandi!\n\n"
+                "Endi YouTube link yuborishingiz mumkin 🎧"
+            )
+        else:
+            await query.answer("❌ Hali kanalga a’zo emassiz!", show_alert=True)
+
+
 # ========= MESSAGE =========
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.message.from_user
-
-    # 🔒 A'ZOLIKNI HAR SAFAR TEKSHIRAMIZ
-    is_subscribed = await check_subscription(user.id, context)
-    if not is_subscribed:
-        await update.message.reply_text(
-            "❌ Avval kanalga a’zo bo‘ling:\n"
-            "👉 https://t.me/aiyordamchi"
-        )
+    if not await check_subscription(update.message.from_user.id, context):
+        await send_subscribe_message(update)
         return
 
     text = update.message.text.strip()
 
     if not YOUTUBE_REGEX.match(text):
-        await update.message.reply_text("❌ Bu YouTube linkga o‘xshamaydi.")
+        await update.message.reply_text("❌ Bu YouTube link emas.")
         return
 
-    await update.message.reply_text("🎵 YouTube link qabul qilindi\n⏳ Audio tayyorlanyapti...")
+    await update.message.reply_text("🎵 Link qabul qilindi\n⏳ Audio tayyorlanyapti...")
 
-    output_template = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
+    output = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
 
     cmd = [
         "yt-dlp",
         "-f", "bestaudio",
         "-x",
         "--audio-format", "m4a",
-        "--audio-quality", "0",
-        "-o", output_template,
+        "-o", output,
         text
     ]
 
     try:
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
+        process = await asyncio.create_subprocess_exec(*cmd)
         await process.communicate()
 
-        files = os.listdir(DOWNLOAD_DIR)
-        if not files:
-            raise Exception("Audio topilmadi")
-
-        audio_path = os.path.join(DOWNLOAD_DIR, files[0])
+        file = os.listdir(DOWNLOAD_DIR)[0]
+        path = os.path.join(DOWNLOAD_DIR, file)
 
         await update.message.reply_audio(
-            audio=open(audio_path, "rb"),
+            audio=open(path, "rb"),
             caption="🎧 Tayyor!"
         )
 
-        os.remove(audio_path)
+        os.remove(path)
 
-    except Exception as e:
-        await update.message.reply_text(
-            "❌ Xatolik yuz berdi.\n"
-            "Boshqa video urinib ko‘ring."
-        )
-        print("ERROR:", e)
+    except:
+        await update.message.reply_text("❌ Xatolik yuz berdi. Boshqa video urinib ko‘ring.")
 
 
 # ========= RUN =========
 def main():
-    if not TOKEN:
-        raise RuntimeError("TELEGRAM_BOT_TOKEN topilmadi")
-
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(callbacks))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("🤖 YT Audio bot ishga tushdi...")
