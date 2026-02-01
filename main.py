@@ -1,7 +1,6 @@
 import os
 import re
 import asyncio
-import subprocess
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -13,6 +12,9 @@ from telegram.ext import (
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
+# 🔒 MAJBURIY KANAL
+REQUIRED_CHANNEL = "@aiyordamchi"
+
 YOUTUBE_REGEX = re.compile(
     r"(https?://)?(www\.)?(youtube\.com|youtu\.be)/.+"
 )
@@ -21,15 +23,48 @@ DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 
+# ========= A'ZOLIK TEKSHIRISH =========
+async def check_subscription(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    try:
+        member = await context.bot.get_chat_member(REQUIRED_CHANNEL, user_id)
+        return member.status in ["member", "administrator", "creator"]
+    except:
+        return False
+
+
+# ========= START =========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+
+    is_subscribed = await check_subscription(user_id, context)
+    if not is_subscribed:
+        await update.message.reply_text(
+            "❌ Botdan foydalanish uchun kanalga a’zo bo‘lishingiz kerak.\n\n"
+            "👉 https://t.me/aiyordamchi\n\n"
+            "A’zo bo‘lgach, /start ni qayta bosing."
+        )
+        return
+
     await update.message.reply_text(
         "👋 Salom!\n\n"
-        "YouTube video linkini yubor.\n"
-        "Men senga **audio (m4a)** qilib beraman 🎧"
+        "Men sizga YouTube videoni **audio**ga aylantirib beraman 🤖🎧\n\n"
+        "YouTube link yuboring."
     )
 
 
+# ========= MESSAGE =========
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.message.from_user
+
+    # 🔒 A'ZOLIKNI HAR SAFAR TEKSHIRAMIZ
+    is_subscribed = await check_subscription(user.id, context)
+    if not is_subscribed:
+        await update.message.reply_text(
+            "❌ Avval kanalga a’zo bo‘ling:\n"
+            "👉 https://t.me/aiyordamchi"
+        )
+        return
+
     text = update.message.text.strip()
 
     if not YOUTUBE_REGEX.match(text):
@@ -72,10 +107,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         os.remove(audio_path)
 
     except Exception as e:
-        await update.message.reply_text("❌ Xatolik yuz berdi. Boshqa video urinib ko‘r.")
+        await update.message.reply_text(
+            "❌ Xatolik yuz berdi.\n"
+            "Boshqa video urinib ko‘ring."
+        )
         print("ERROR:", e)
 
 
+# ========= RUN =========
 def main():
     if not TOKEN:
         raise RuntimeError("TELEGRAM_BOT_TOKEN topilmadi")
