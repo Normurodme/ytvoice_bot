@@ -1,16 +1,21 @@
 import os
 import re
 import asyncio
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup
+)
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     MessageHandler,
     CallbackQueryHandler,
     ContextTypes,
-    filters,
+    filters
 )
 
+# ================== SOZLAMALAR ==================
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 REQUIRED_CHANNEL = "@aiyordamchi"
 
@@ -20,7 +25,11 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 YOUTUBE_REGEX = re.compile(r"(https?://)?(www\.)?(youtube\.com|youtu\.be)/.+")
 INSTAGRAM_REGEX = re.compile(r"(https?://)?(www\.)?(instagram\.com|instagr\.am)/.+")
 
-# ========= A'ZOLIK =========
+# ====== PARALLEL CHEKLOV (MUHIM QO‘SHIMCHA) ======
+MAX_PARALLEL_DOWNLOADS = 2
+download_semaphore = asyncio.Semaphore(MAX_PARALLEL_DOWNLOADS)
+
+# ================== A'ZOLIK TEKSHIRISH ==================
 async def check_subscription(user_id, context):
     try:
         member = await context.bot.get_chat_member(REQUIRED_CHANNEL, user_id)
@@ -28,18 +37,20 @@ async def check_subscription(user_id, context):
     except:
         return False
 
+# ================== A'ZOLIK XABARI ==================
 async def send_subscribe_message(update: Update):
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("🤖 AIyordamchi", url="https://t.me/aiyordamchi")],
         [InlineKeyboardButton("✅ Tasdiqlash", callback_data="check_sub")]
     ])
+
     await update.message.reply_text(
         "💡 Botdan foydalanish uchun kanalga a’zo bo‘lishingiz kerak.\n\n"
-        "👉 A’zo bo‘lib, Tasdiqlash ni bosing.",
+        "👉 A’zo bo‘lib, Tasdiqlash tugmasini bosing.",
         reply_markup=keyboard
     )
 
-# ========= START =========
+# ================== START ==================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_subscription(update.message.from_user.id, context):
         await send_subscribe_message(update)
@@ -52,114 +63,88 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML"
     )
 
-# ========= CALLBACK =========
+# ================== CALLBACK ==================
 async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+
     if query.data == "check_sub":
         if await check_subscription(query.from_user.id, context):
-            await query.message.edit_text("✅ A’zolik tasdiqlandi!\n\nLink yuboring 🎧")
+            await query.message.edit_text(
+                "✅ A’zolik tasdiqlandi!\n\nLink yuboring 🎧"
+            )
         else:
-            await query.answer("❌ Kanalga a’zo emassiz!", show_alert=True)
+            await query.answer(
+                "💡 Hali kanalga a’zo emassiz!",
+                show_alert=True
+            )
 
-# ========= INSTAGRAM (1 GA 1 KO‘CHIRILDI) =========
-async def handle_instagram(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    url = update.message.text.strip()
-
-    if not INSTAGRAM_REGEX.match(url):
-        return False
-
-    await update.message.reply_text(
-        "🎵 Link qabul qilindi\n"
-        "⚡ Audio tayyorlanmoqda..."
-    )
-
-    output = os.path.join(DOWNLOAD_DIR, "%(id)s.%(ext)s")
-
-    cmd = [
-        "yt-dlp",
-        "-f", "ba",
-        "--no-playlist",
-        "--extract-audio",
-        "--audio-format", "mp3",
-        "--audio-quality", "0",
-        "-o", output,
-        url
-    ]
-
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL
-        )
-        await proc.communicate()
-
-        files = os.listdir(DOWNLOAD_DIR)
-        if not files:
-            raise Exception()
-
-        path = os.path.join(DOWNLOAD_DIR, files[0])
-
-        await update.message.reply_audio(
-            audio=open(path, "rb"),
-            caption="🎧 Tayyor!"
-        )
-        os.remove(path)
-
-    except:
-        await update.message.reply_text(
-            "❌ Audio chiqarilmadi.\n"
-            "👉 Video yopiq yoki muammoli bo‘lishi mumkin."
-        )
-
-    return True
-
-# ========= MESSAGE (YOUTUBE 1 GA 1) =========
+# ================== MESSAGE ==================
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_subscription(update.message.from_user.id, context):
         await send_subscribe_message(update)
         return
 
-    text = update.message.text.strip()
+    url = update.message.text.strip()
 
-    # Instagram
-    if await handle_instagram(update, context):
-        return
-
-    # YouTube (TEGILMADI)
-    if not YOUTUBE_REGEX.match(text):
-        await update.message.reply_text("❌ Bu Instagram yoki YouTube link emas.")
-        return
-
-    await update.message.reply_text(
-        "🎵 Link qabul qilindi\n"
-        "⚡ Audio tez tayyorlanmoqda..."
-    )
-
-    output = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
-
-    cmd = [
-        "yt-dlp",
-        "-f", "bestaudio[ext=m4a]/bestaudio",
-        "--no-playlist",
-        "--no-check-certificate",
-        "--no-warnings",
-        "-o", output,
-        text
-    ]
-
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL
+    # ===== YouTube =====
+    if YOUTUBE_REGEX.match(url):
+        await update.message.reply_text(
+            "🎵 Link qabul qilindi\n"
+            "⚡ Audio tez tayyorlanmoqda..."
         )
-        await proc.communicate()
+
+        output = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
+
+        cmd = [
+            "yt-dlp",
+            "-f", "bestaudio[ext=m4a]/bestaudio",
+            "--no-playlist",
+            "--no-check-certificate",
+            "--no-warnings",
+            "-o", output,
+            url
+        ]
+
+    # ===== Instagram =====
+    elif INSTAGRAM_REGEX.match(url):
+        await update.message.reply_text(
+            "🎵 Link qabul qilindi\n"
+            "⚡ Audio tayyorlanmoqda..."
+        )
+
+        output = os.path.join(DOWNLOAD_DIR, "%(id)s.%(ext)s")
+
+        cmd = [
+            "yt-dlp",
+            "-f", "ba",
+            "--no-playlist",
+            "--extract-audio",
+            "--audio-format", "mp3",
+            "--audio-quality", "0",
+            "-o", output,
+            url
+        ]
+
+    else:
+        await update.message.reply_text(
+            "💡 Bu Instagram yoki YouTube link emas."
+        )
+        return
+
+    # ===== DOWNLOAD (CHEKLANGAN PARALLEL) =====
+    try:
+        async with download_semaphore:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL
+            )
+            await proc.communicate()
 
         files = os.listdir(DOWNLOAD_DIR)
         if not files:
-            raise Exception()
+            raise Exception("Audio topilmadi")
 
         path = os.path.join(DOWNLOAD_DIR, files[0])
 
@@ -167,20 +152,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             audio=open(path, "rb"),
             caption="🎧 Tayyor!"
         )
+
         os.remove(path)
 
     except:
         await update.message.reply_text(
             "❌ Audio chiqarilmadi.\n"
-            "👉 Juda uzun yoki yopiq video bo‘lishi mumkin."
+            "👉 Video yopiq, juda uzun yoki muammoli bo‘lishi mumkin."
         )
 
-# ========= RUN =========
+# ================== RUN ==================
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(callbacks))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    print("🤖 Insta + YouTube Audio bot ishga tushdi...")
     app.run_polling()
 
 if __name__ == "__main__":
