@@ -16,11 +16,9 @@ from telegram.ext import (
 )
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-
 REQUIRED_CHANNEL = "@aiyordamchi"
 
 YOUTUBE_REGEX = re.compile(r"(https?://)?(www\.)?(youtube\.com|youtu\.be)/.+")
-
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
@@ -94,19 +92,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     cmd = [
         "yt-dlp",
-        "-f", "bestaudio",
-        "-x",
-        "--audio-format", "m4a",
+        "-f", "ba/b",           # ⭐ SHORTS + UZUN VIDEO ISHLAYDI
+        "--no-playlist",
         "-o", output,
         text
     ]
 
     try:
-        process = await asyncio.create_subprocess_exec(*cmd)
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL
+        )
         await process.communicate()
 
-        file = os.listdir(DOWNLOAD_DIR)[0]
-        path = os.path.join(DOWNLOAD_DIR, file)
+        files = os.listdir(DOWNLOAD_DIR)
+        if not files:
+            raise Exception("File topilmadi")
+
+        path = os.path.join(DOWNLOAD_DIR, files[0])
 
         await update.message.reply_audio(
             audio=open(path, "rb"),
@@ -115,7 +119,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         os.remove(path)
 
-    except:
+    except Exception as e:
         await update.message.reply_text("❌ Xatolik yuz berdi. Boshqa video urinib ko‘ring.")
 
 
